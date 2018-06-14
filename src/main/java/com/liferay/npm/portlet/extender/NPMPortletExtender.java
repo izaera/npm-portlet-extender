@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintWriter;
 import java.net.URL;
-import java.net.URLConnection;
 import java.util.ArrayList;
 import java.util.Dictionary;
 import java.util.Hashtable;
@@ -65,27 +64,25 @@ public class NPMPortletExtender implements BundleActivator {
 
 							System.out.println("Found bundle with opt-in: " + bundle.getSymbolicName());
 
-							// read package.json metadata
-
 							URL jsonURL = bundle.getEntry("META-INF/resources/package.json");
 
 							try (InputStream inputStream = jsonURL.openStream()) {
 								String jsonString = StringUtil.read(inputStream);
 
-								JSONObject jsonObject = jsonFactory.createJSONObject(jsonString);
+								JSONObject packageJSON = jsonFactory.createJSONObject(jsonString);
+								
+								System.out.println("package.json: " + packageJSON.toString());
 
-								System.out.println("json object: " + jsonObject.toString());
-
-								final String name = jsonObject.getString("name");
-								final String version = jsonObject.getString("version");
-
-								// collect service properties
+								final String name = packageJSON.getString("name");
+								final String version = packageJSON.getString("version");
 
 								Dictionary<String, Object> properties = new Hashtable<>();
 
 								properties.put("javax.portlet.name", name);
 
-								_addServiceProperties(properties, jsonObject.getJSONObject("portlet"));
+								JSONObject portletJSON = packageJSON.getJSONObject("portlet");
+
+								_addServiceProperties(properties, portletJSON);
 
 								ServiceRegistration<?> serviceRegistration =
 									bundle.getBundleContext().registerService(
@@ -96,7 +93,7 @@ public class NPMPortletExtender implements BundleActivator {
 								return serviceRegistration;
 							}
 							catch (Exception e) {
-								e.printStackTrace();
+								_logger.error(e.getMessage());
 							}
 
 							return null;
@@ -129,7 +126,6 @@ public class NPMPortletExtender implements BundleActivator {
 		};
 
 		_jsonFactoryTracker.open();
-
 	}
 
 	@Override
