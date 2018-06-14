@@ -62,8 +62,6 @@ public class NPMPortletExtender implements BundleActivator {
 								return null;
 							}
 
-							System.out.println("Found bundle with opt-in: " + bundle.getSymbolicName());
-
 							URL jsonURL = bundle.getEntry("META-INF/resources/package.json");
 
 							try (InputStream inputStream = jsonURL.openStream()) {
@@ -71,18 +69,16 @@ public class NPMPortletExtender implements BundleActivator {
 
 								JSONObject packageJSON = jsonFactory.createJSONObject(jsonString);
 								
-								System.out.println("package.json: " + packageJSON.toString());
-
 								final String name = packageJSON.getString("name");
 								final String version = packageJSON.getString("version");
 
 								Dictionary<String, Object> properties = new Hashtable<>();
-
+								
 								properties.put("javax.portlet.name", name);
 
 								JSONObject portletJSON = packageJSON.getJSONObject("portlet");
 
-								_addServiceProperties(properties, portletJSON);
+								_addPortletProperties(properties, portletJSON);
 
 								ServiceRegistration<?> serviceRegistration =
 									bundle.getBundleContext().registerService(
@@ -133,19 +129,19 @@ public class NPMPortletExtender implements BundleActivator {
 		_jsonFactoryTracker.close();
 	}
 
-	private void _addServiceProperties(
-		Dictionary<String, Object> properties, JSONObject jsonObject) {
+	private void _addPortletProperties(
+		Dictionary<String, Object> properties, JSONObject portletJSON) {
 
-		if (jsonObject == null) {
+		if (portletJSON == null) {
 			return;
 		}
-
-		Iterator<String> keys = jsonObject.keys();
+		
+		Iterator<String> keys = portletJSON.keys();
 
 		while (keys.hasNext()) {
 			String key = keys.next();
 
-			Object value = jsonObject.get(key);
+			Object value = portletJSON.get(key);
 
 			if (value instanceof JSONObject) {
 				String stringValue = value.toString();
