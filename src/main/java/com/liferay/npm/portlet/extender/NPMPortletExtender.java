@@ -1,3 +1,17 @@
+/**
+ * Copyright (c) 2000-present Liferay, Inc. All rights reserved.
+ *
+ * This library is free software; you can redistribute it and/or modify it under
+ * the terms of the GNU Lesser General Public License as published by the Free
+ * Software Foundation; either version 2.1 of the License, or (at your option)
+ * any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+ * FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more
+ * details.
+ */
+
 package com.liferay.npm.portlet.extender;
 
 import com.liferay.portal.kernel.json.JSONArray;
@@ -40,6 +54,9 @@ import org.osgi.util.tracker.ServiceTracker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * @author Jesse Rao
+ */
 public class NPMPortletExtender implements BundleActivator {
 
 	@Override
@@ -73,31 +90,35 @@ public class NPMPortletExtender implements BundleActivator {
 								"META-INF/resources/package.json");
 
 							try (InputStream inputStream =
-							jsonURL.openStream()) {
+									jsonURL.openStream()) {
 
 								String jsonString = StringUtil.read(
 									inputStream);
 
-								JSONObject packageJSON =
+								JSONObject packageJSONObject =
 									jsonFactory.createJSONObject(jsonString);
 
-								final String name = packageJSON.getString(
+								final String name = packageJSONObject.getString(
 									"name");
-								final String version = packageJSON.getString(
-									"version");
+								final String version =
+									packageJSONObject.getString("version");
 
 								Dictionary<String, Object> properties =
 									new Hashtable<>();
 
 								properties.put("javax.portlet.name", name);
 
-								JSONObject portletJSON =
-									packageJSON.getJSONObject("portlet");
+								JSONObject portletJSONObject =
+									packageJSONObject.getJSONObject("portlet");
 
-								_addPortletProperties(properties, portletJSON);
+								_addPortletProperties(
+									properties, portletJSONObject);
+
+								BundleContext bundleContext =
+									bundle.getBundleContext();
 
 								ServiceRegistration<?> serviceRegistration =
-									bundle.getBundleContext().registerService(
+									bundleContext.registerService(
 										new String[] {Portlet.class.getName()},
 										new NPMPortlet(name, version),
 										properties);
@@ -152,18 +173,18 @@ public class NPMPortletExtender implements BundleActivator {
 	}
 
 	private void _addPortletProperties(
-		Dictionary<String, Object> properties, JSONObject portletJSON) {
+		Dictionary<String, Object> properties, JSONObject portletJSONObject) {
 
-		if (portletJSON == null) {
+		if (portletJSONObject == null) {
 			return;
 		}
 
-		Iterator<String> keys = portletJSON.keys();
+		Iterator<String> keys = portletJSONObject.keys();
 
 		while (keys.hasNext()) {
 			String key = keys.next();
 
-			Object value = portletJSON.get(key);
+			Object value = portletJSONObject.get(key);
 
 			if (value instanceof JSONObject) {
 				String stringValue = value.toString();
@@ -176,7 +197,9 @@ public class NPMPortletExtender implements BundleActivator {
 				List<String> values = new ArrayList<>();
 
 				for (int i = 0; i < array.length(); i++) {
-					values.add(array.get(i).toString());
+					Object object = array.get(i);
+
+					values.add(object.toString());
 				}
 
 				properties.put(key, values.toArray(new String[0]));
@@ -250,7 +273,7 @@ public class NPMPortletExtender implements BundleActivator {
 				writer.flush();
 			}
 			catch (IOException ioe) {
-				_logger.error(ioe.getLocalizedMessage());
+				_logger.error(ioe.getMessage());
 			}
 		}
 
