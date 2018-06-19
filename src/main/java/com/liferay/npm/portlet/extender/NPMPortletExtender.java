@@ -1,10 +1,31 @@
+/**
+ * Copyright (c) 2000-present Liferay, Inc. All rights reserved.
+ *
+ * This library is free software; you can redistribute it and/or modify it under
+ * the terms of the GNU Lesser General Public License as published by the Free
+ * Software Foundation; either version 2.1 of the License, or (at your option)
+ * any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+ * FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more
+ * details.
+ */
+
 package com.liferay.npm.portlet.extender;
+
+import com.liferay.portal.kernel.json.JSONArray;
+import com.liferay.portal.kernel.json.JSONFactory;
+import com.liferay.portal.kernel.json.JSONObject;
+import com.liferay.portal.kernel.portlet.bridges.mvc.MVCPortlet;
+import com.liferay.portal.kernel.util.StringUtil;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintWriter;
+
 import java.net.URL;
-import java.net.URLConnection;
+
 import java.util.ArrayList;
 import java.util.Dictionary;
 import java.util.Hashtable;
@@ -29,15 +50,13 @@ import org.osgi.namespace.extender.ExtenderNamespace;
 import org.osgi.util.tracker.BundleTracker;
 import org.osgi.util.tracker.BundleTrackerCustomizer;
 import org.osgi.util.tracker.ServiceTracker;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.liferay.portal.kernel.json.JSONArray;
-import com.liferay.portal.kernel.json.JSONFactory;
-import com.liferay.portal.kernel.json.JSONObject;
-import com.liferay.portal.kernel.portlet.bridges.mvc.MVCPortlet;
-import com.liferay.portal.kernel.util.StringUtil;
-
+/**
+ * @author Jesse Rao
+ */
 public class NPMPortletExtender implements BundleActivator {
 
 	@Override
@@ -46,7 +65,9 @@ public class NPMPortletExtender implements BundleActivator {
 			context, JSONFactory.class, null) {
 
 			@Override
-			public JSONFactory addingService(ServiceReference<JSONFactory> reference) {
+			public JSONFactory addingService(
+				ServiceReference<JSONFactory> reference) {
+
 				if (_bundleTracker != null) {
 					return null;
 				}
@@ -58,37 +79,46 @@ public class NPMPortletExtender implements BundleActivator {
 					new BundleTrackerCustomizer<ServiceRegistration<?>>() {
 
 						@Override
-						public ServiceRegistration<?> addingBundle(Bundle bundle, BundleEvent event) {
+						public ServiceRegistration<?> addingBundle(
+							Bundle bundle, BundleEvent event) {
+
 							if (!_optIn(bundle)) {
 								return null;
 							}
 
-							System.out.println("Found bundle with opt-in: " + bundle.getSymbolicName());
+							URL jsonURL = bundle.getEntry(
+								"META-INF/resources/package.json");
 
-							// read package.json metadata
+							try (InputStream inputStream =
+									jsonURL.openStream()) {
 
-							URL jsonURL = bundle.getEntry("META-INF/resources/package.json");
+								String jsonString = StringUtil.read(
+									inputStream);
 
-							try (InputStream inputStream = jsonURL.openStream()) {
-								String jsonString = StringUtil.read(inputStream);
+								JSONObject packageJSONObject =
+									jsonFactory.createJSONObject(jsonString);
 
-								JSONObject jsonObject = jsonFactory.createJSONObject(jsonString);
+								final String name = packageJSONObject.getString(
+									"name");
+								final String version =
+									packageJSONObject.getString("version");
 
-								System.out.println("json object: " + jsonObject.toString());
-
-								final String name = jsonObject.getString("name");
-								final String version = jsonObject.getString("version");
-
-								// collect service properties
-
-								Dictionary<String, Object> properties = new Hashtable<>();
+								Dictionary<String, Object> properties =
+									new Hashtable<>();
 
 								properties.put("javax.portlet.name", name);
 
-								_addServiceProperties(properties, jsonObject.getJSONObject("portlet"));
+								JSONObject portletJSONObject =
+									packageJSONObject.getJSONObject("portlet");
+
+								_addPortletProperties(
+									properties, portletJSONObject);
+
+								BundleContext bundleContext =
+									bundle.getBundleContext();
 
 								ServiceRegistration<?> serviceRegistration =
-									bundle.getBundleContext().registerService(
+									bundleContext.registerService(
 										new String[] {Portlet.class.getName()},
 										new NPMPortlet(name, version),
 										properties);
@@ -96,23 +126,27 @@ public class NPMPortletExtender implements BundleActivator {
 								return serviceRegistration;
 							}
 							catch (Exception e) {
-								e.printStackTrace();
+								_logger.error(e.getMessage());
 							}
 
 							return null;
 						}
 
 						@Override
-						public void modifiedBundle(Bundle bundle, BundleEvent event, ServiceRegistration<?> registration) {
+						public void modifiedBundle(
+							Bundle bundle, BundleEvent event,
+							ServiceRegistration<?> registration) {
 						}
 
 						@Override
-						public void removedBundle(Bundle bundle, BundleEvent event, ServiceRegistration<?> registration) {
+						public void removedBundle(
+							Bundle bundle, BundleEvent event,
+							ServiceRegistration<?> registration) {
+
 							registration.unregister();
 						}
 
-					}
-				);
+					});
 
 				_bundleTracker.open();
 
@@ -120,7 +154,9 @@ public class NPMPortletExtender implements BundleActivator {
 			}
 
 			@Override
-			public void removedService(ServiceReference<JSONFactory> reference, JSONFactory service) {
+			public void removedService(
+				ServiceReference<JSONFactory> reference, JSONFactory service) {
+
 				_bundleTracker.close();
 
 				_bundleTracker = null;
@@ -129,7 +165,6 @@ public class NPMPortletExtender implements BundleActivator {
 		};
 
 		_jsonFactoryTracker.open();
-
 	}
 
 	@Override
@@ -137,19 +172,19 @@ public class NPMPortletExtender implements BundleActivator {
 		_jsonFactoryTracker.close();
 	}
 
-	private void _addServiceProperties(
-		Dictionary<String, Object> properties, JSONObject jsonObject) {
+	private void _addPortletProperties(
+		Dictionary<String, Object> properties, JSONObject portletJSONObject) {
 
-		if (jsonObject == null) {
+		if (portletJSONObject == null) {
 			return;
 		}
 
-		Iterator<String> keys = jsonObject.keys();
+		Iterator<String> keys = portletJSONObject.keys();
 
 		while (keys.hasNext()) {
 			String key = keys.next();
 
-			Object value = jsonObject.get(key);
+			Object value = portletJSONObject.get(key);
 
 			if (value instanceof JSONObject) {
 				String stringValue = value.toString();
@@ -162,7 +197,9 @@ public class NPMPortletExtender implements BundleActivator {
 				List<String> values = new ArrayList<>();
 
 				for (int i = 0; i < array.length(); i++) {
-					values.add(array.get(i).toString());
+					Object object = array.get(i);
+
+					values.add(object.toString());
 				}
 
 				properties.put(key, values.toArray(new String[0]));
@@ -176,7 +213,8 @@ public class NPMPortletExtender implements BundleActivator {
 	private boolean _optIn(Bundle bundle) {
 		BundleWiring bundleWiring = bundle.adapt(BundleWiring.class);
 
-		List<BundleWire> bundleWires = bundleWiring.getRequiredWires(ExtenderNamespace.EXTENDER_NAMESPACE);
+		List<BundleWire> bundleWires = bundleWiring.getRequiredWires(
+			ExtenderNamespace.EXTENDER_NAMESPACE);
 
 		for (BundleWire bundleWire : bundleWires) {
 			BundleCapability bundleCapability = bundleWire.getCapability();
@@ -193,7 +231,8 @@ public class NPMPortletExtender implements BundleActivator {
 		return false;
 	}
 
-	private static final Logger _logger = LoggerFactory.getLogger(NPMPortletExtender.class);
+	private static final Logger _logger = LoggerFactory.getLogger(
+		NPMPortletExtender.class);
 
 	private BundleTracker<ServiceRegistration<?>> _bundleTracker;
 	private ServiceTracker<JSONFactory, JSONFactory> _jsonFactoryTracker;
@@ -212,8 +251,8 @@ public class NPMPortletExtender implements BundleActivator {
 
 				writer.print("<div id=\"npm-portlet-");
 				writer.print(response.getNamespace());
-				writer.println("\" />");
-				writer.println("<script type=\"javascript\">");
+				writer.println("\"></div>");
+				writer.println("<script type=\"text/javascript\">");
 				writer.print("Liferay.Loader.require(\"");
 				writer.print(_name);
 				writer.print("@");
@@ -228,10 +267,13 @@ public class NPMPortletExtender implements BundleActivator {
 				writer.println("\",");
 				writer.print("portletElementId: \"npm-portlet-");
 				writer.print(response.getNamespace());
-				writer.println("\"});});</script>");
+				writer.println("\"});});");
+				writer.println("</script>");
+
+				writer.flush();
 			}
 			catch (IOException ioe) {
-				_logger.error(ioe.getLocalizedMessage());
+				_logger.error(ioe.getMessage());
 			}
 		}
 
